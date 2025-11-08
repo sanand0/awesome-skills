@@ -318,7 +318,67 @@
     let searchQuery = '';
     let selectedAuthor = 'all';
     let selectedTags = new Set();
-    
+    let isUpdatingUrl = false; // Flag to prevent hashchange loop
+
+    // URL synchronization functions
+    function updateUrlFromFilters() {
+      const params = new URLSearchParams();
+
+      if (searchQuery) {
+        params.set('search', searchQuery);
+      }
+
+      if (selectedAuthor && selectedAuthor !== 'all') {
+        params.set('author', selectedAuthor);
+      }
+
+      if (selectedTags.size > 0) {
+        selectedTags.forEach(tag => {
+          params.append('tag', tag);
+        });
+      }
+
+      const hash = params.toString() ? '?' + params.toString() : '';
+      isUpdatingUrl = true;
+      window.location.hash = hash;
+      // Reset flag after a short delay to allow hashchange to fire
+      setTimeout(() => { isUpdatingUrl = false; }, 10);
+    }
+
+    function applyFiltersFromUrl() {
+      const hash = window.location.hash.slice(1); // Remove '#'
+      if (!hash || !hash.startsWith('?')) return;
+
+      const params = new URLSearchParams(hash.slice(1)); // Remove '?'
+
+      // Apply search query
+      const search = params.get('search');
+      if (search) {
+        searchQuery = search;
+        document.getElementById('search-input').value = search;
+      }
+
+      // Apply author filter
+      const author = params.get('author');
+      if (author) {
+        selectedAuthor = author;
+        document.getElementById('author-select').value = author;
+      }
+
+      // Apply tag filters
+      const tags = params.getAll('tag');
+      if (tags.length > 0) {
+        selectedTags = new Set(tags);
+        // Update tag chip UI
+        document.querySelectorAll('.tag-chip').forEach(chip => {
+          const tag = chip.dataset.tag;
+          if (selectedTags.has(tag)) {
+            chip.setAttribute('aria-pressed', 'true');
+          }
+        });
+      }
+    }
+
     // Compute unique authors and tags
     const allAuthors = [...new Set(skillsData.map(s => s.author).filter(Boolean))].sort();
     const allTags = [...new Set(skillsData.flatMap(s => s.tags || []))].sort();
@@ -327,6 +387,7 @@
     function init() {
       renderAuthorOptions();
       renderTagChips();
+      applyFiltersFromUrl();
       updateFilters();
       wireEvents();
     }
@@ -581,15 +642,15 @@
     // Update filter UI (badge, clear button)
     function updateFilters() {
       let activeCount = 0;
-      
+
       if (searchQuery) activeCount++;
       if (selectedAuthor !== 'all') activeCount++;
       if (selectedTags.size > 0) activeCount++;
-      
+
       const badge = document.getElementById('active-filters-badge');
       const clearBtn = document.getElementById('clear-filters-btn');
       const countSpan = document.getElementById('active-filters-count');
-      
+
       if (activeCount > 0) {
         badge.classList.remove('hidden');
         clearBtn.classList.remove('hidden');
@@ -598,9 +659,10 @@
         badge.classList.add('hidden');
         clearBtn.classList.add('hidden');
       }
-      
+
       updateInlineTagBadges();
       renderSkills();
+      updateUrlFromFilters();
     }
     
     // Clear all filters
@@ -608,14 +670,15 @@
       searchQuery = '';
       selectedAuthor = 'all';
       selectedTags.clear();
-      
+
       document.getElementById('search-input').value = '';
       document.getElementById('author-select').value = 'all';
-      
+
       document.querySelectorAll('.tag-chip').forEach(chip => {
         chip.setAttribute('aria-pressed', 'false');
       });
-      
+
+      window.location.hash = '';
       updateFilters();
     }
     
@@ -811,6 +874,26 @@
         if (isCollapsed) {
           expandCards();
         }
+      });
+
+      // Handle browser back/forward navigation
+      window.addEventListener('hashchange', () => {
+        // Skip if we're the ones updating the URL
+        if (isUpdatingUrl) return;
+
+        // Reset filters first
+        searchQuery = '';
+        selectedAuthor = 'all';
+        selectedTags.clear();
+        document.getElementById('search-input').value = '';
+        document.getElementById('author-select').value = 'all';
+        document.querySelectorAll('.tag-chip').forEach(chip => {
+          chip.setAttribute('aria-pressed', 'false');
+        });
+
+        // Apply filters from URL
+        applyFiltersFromUrl();
+        updateFilters();
       });
     }
     
